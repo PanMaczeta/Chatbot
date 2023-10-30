@@ -81,3 +81,36 @@ def plot_and_save_metric(history, metric_name, output_dir):
     output_path = os.path.join(output_dir, metric_name + '_plot.png')
     plt.savefig(output_path)
     plt.close()
+
+# Alternative architecture
+# import tensorflow as tf
+# 
+# def transformer_model(vocab_size, d_model, n_heads, n_encoder_layers, n_decoder_layers, dff, input_max_len, target_max_len, rate=0.1):
+#     inputs = tf.keras.layers.Input(shape=(input_max_len,))
+#     dec_inputs = tf.keras.layers.Input(shape=(target_max_len,))
+#     
+#     # Embedding and positional encoding for the encoder
+#     enc_padding_mask = tf.keras.layers.Lambda(create_padding_mask, input_shape=(1, None))(inputs)
+#     embeddings = tf.keras.layers.Embedding(vocab_size, d_model)(inputs)
+#     embeddings *= tf.keras.layers.Lambda(tf.sqrt, arguments={'x': d_model})(embeddings)
+#     embeddings = PositionalEncoding(vocab_size, d_model)(embeddings)
+#     
+#     x = embeddings
+#     for _ in range(n_encoder_layers):
+#         x = encoder_layer(d_model, n_heads, dff, rate)([x, enc_padding_mask])
+#     
+#     # Embedding and positional encoding for the decoder
+#     look_ahead_mask = tf.keras.layers.Lambda(create_look_ahead_mask, input_shape=(1, None), dtype=tf.float32)(dec_inputs)
+#     dec_padding_mask = tf.keras.layers.Lambda(create_padding_mask, input_shape=(1, None))(inputs)
+#     embeddings = tf.keras.layers.Embedding(vocab_size, d_model)(dec_inputs)
+#     embeddings *= tf.keras.layers.Lambda(tf.sqrt, arguments={'x': d_model})(embeddings)
+#     embeddings = PositionalEncoding(vocab_size, d_model)(embeddings)
+#     
+#     x = embeddings
+#     for _ in range(n_decoder_layers):
+#         x = decoder_layer(d_model, n_heads, dff, rate)([x, enc_output, look_ahead_mask, dec_padding_mask])
+#     
+#     outputs = tf.keras.layers.Dense(vocab_size)(x)
+#     
+#     return tf.keras.Model(inputs=[inputs, dec_inputs], outputs=outputs)
+# 

@@ -6,54 +6,76 @@ import tensorflow as tf
 from tools import load_data, preprocess, perplexity, plot_and_save_metric
 
 # Preprocessing data phase
+test_flag = True    # In case of lack of a data testing
+
+if not test_flag:   #if you want to check compile
+    data_path = ''
+    raw_data = load_data(data_path) # load raw data from path given (TODO: SQL integration)
+
+    preprocessed_data = [preprocess(qa) for qa in raw_data.split('\n')]
+
+    # Params from config
+    training_size = len(preprocessed_data)
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+
+    vectorizer = tf.keras.layers.TextVectorization(max_tokens=config["DEFAULT"]["VocabSize"], output_mode='int')
+    vectorizer.adapt(preprocessed_data)
+
+    sequences = vectorizer(preprocessed_data)
+
+    padded_sequences = tf.keras.utils.pad_sequences(sequences, 
+                  maxlen=config['DEFAULT']['MaxLength'], 
+                  padding=config['DEFAULT']['PaddingType'], 
+                  truncating=config['DEFAULT']['TruncType'])
+
+    training_data = padded_sequences[:training_size // 2]       # Typical QA dataset
+    training_labels = padded_sequences[training_size // 2:]
+else:
+    config = configparser.ConfigParser()
+    config.read('config.ini')
 
 
-data_path = ''
-raw_data = load_data(data_path) # load raw data from path given (TODO: SQL integration)
-
-preprocessed_data = [preprocess(qa) for qa in raw_data.split('\n')]
-
-# Params from config
-training_size = len(preprocessed_data)
-config = configparser.ConfigParser()
-config.read('config.ini')
-
-vectorizer = tf.keras.layers.TextVectorization(max_tokens=config["DEFAULT"]["VocabSize"], output_mode='int')
-vectorizer.adapt(preprocessed_data)
-
-sequences = vectorizer(preprocessed_data)
-
-padded_sequences = tf.keras.utils.pad_sequences(sequences, 
-              maxlen=config['DEFAULT']['MaxLength'], 
-              padding=config['DEFAULT']['PaddingType'], 
-              truncating=config['DEFAULT']['TruncType'])
-
-training_data = padded_sequences[:training_size // 2]       # Typical QA dataset
-training_labels = padded_sequences[training_size // 2:]
 
 # Architecture phase
 
 model = tf.keras.Sequential([
     tf.keras.layers.Embedding(
-              config['DEFAULT']['VocabSize'], 
-              config['DEFAULT']['EmbeddingDim'], 
-              input_length=config['DEFAULT']['MaxLength']),
-    tf.keras.layers.Conv1D(64, 5),                          # linear activation
-    tf.keras.layers.BatchNormalization(),                   # BaN for performance
-    tf.keras.layers.Activation(activation='relu'),          # Activation after BaN
-    tf.keras.layers.MaxPooling1D(pool_size=4),
-    tf.keras.layers.Flatten(),
+        input_dim=config.getint('DEFAULT','VocabSize'), 
+        output_dim=config.getint('DEFAULT','EmbeddingDim'), 
+        input_length=config.getint('DEFAULT','MaxLength')
+    ),
+    tf.keras.layers.LSTM(units=512, return_sequences=True),
+    tf.keras.layers.Conv1D(512, 5),
+    tf.keras.layers.BatchNormalization(),              # BaN for performance
+    tf.keras.layers.Activation(activation='relu'),
+    tf.keras.layers.MaxPooling1D(pool_size=2),
     tf.keras.layers.Dropout(0.2),
-    tf.keras.layers.LSTM(64),
-    tf.keras.layers.BatchNormalization(),                   # BaN for performance
-    tf.keras.layers.Dense(64, activation='relu'),
-    tf.keras.layers.Dense(config['DEFAULT']['VocabSize'], activation='softmax')
-    ])
+    tf.keras.layers.LSTM(512, return_sequences=True),  # Second LSTM layer
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Conv1D(512, 5),
+    tf.keras.layers.BatchNormalization(),              # BaN for performance
+    tf.keras.layers.Activation(activation='relu'),
+    tf.keras.layers.MaxPooling1D(pool_size=2),
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.LSTM(512, return_sequences=True),  # Third LSTM layer
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Conv1D(512, 5),
+    tf.keras.layers.BatchNormalization(),              # BaN for performance
+    tf.keras.layers.Activation(activation='relu'),
+    tf.keras.layers.MaxPooling1D(pool_size=2),
+    tf.keras.layers.Dropout(0.2),                      # DO To prevent overfitting
+    tf.keras.layers.LSTM(512, return_sequences=True),  # Fourth LSTM layer
+    tf.keras.layers.BatchNormalization(),              # BaN for performance
+    tf.keras.layers.Dense(512, activation='relu'),
+    tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(config.getint('DEFAULT','VocabSize'), activation='softmax'))
+])
 
 
 model.compile(loss='sparse_categorical_crossentropy', 
           optimizer='adam', 
-          metrics=['accuracy', 'precision', 'recall', 'f1_score',perplexity]) 
+          metrics=['accuracy', 'precision', 'recall', 'f1_score',perplexity])
+model.summary()
 
 early_stopping = tf.keras.callbacks.EarlyStopping(
           monitor='val_loss',
